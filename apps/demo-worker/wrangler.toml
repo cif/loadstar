@@ -1,0 +1,25 @@
+name = "loadstar-demo"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+[[workflows]]
+name = "agent-workflow"
+class_name = "AgentWorkflow"
+binding = "AGENT_WORKFLOW"
+
+[[durable_objects.bindings]]
+name = "RELAY"
+class_name = "RelayDO"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["RelayDO"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "loadstar-db"
+database_id = "TODO-create-database"
+
+[vars]
+AI_GATEWAY_ACCOUNT_ID = ""
+AI_GATEWAY_ID = ""
