@@ -3,7 +3,7 @@ import { z } from "zod";
 
 const researcher = agent({
   name: "researcher",
-  model: "@cf/meta/llama-3.1-70b-instruct",
+  model: "@cf/meta/llama-3.2-3b-instruct",
   system: `You are a helpful research assistant. You can search for information and provide well-structured answers. Be concise and cite your sources when possible.`,
   tools: [
     tool({
@@ -34,10 +34,20 @@ const researcher = agent({
       }),
       execute: async (params) => {
         try {
-          const result = new Function(`return (${params.expression})`)();
+          const tokens = params.expression.match(/(\d+\.?\d*|[+\-*/])/g);
+          if (!tokens) return { error: "Invalid expression" };
+          let result = parseFloat(tokens[0]);
+          for (let i = 1; i < tokens.length; i += 2) {
+            const op = tokens[i];
+            const num = parseFloat(tokens[i + 1]);
+            if (op === "+") result += num;
+            else if (op === "-") result -= num;
+            else if (op === "*") result *= num;
+            else if (op === "/") result /= num;
+          }
           return { result: String(result) };
-        } catch {
-          return { error: "Invalid expression" };
+        } catch (e) {
+          return { error: String(e) };
         }
       },
     }),

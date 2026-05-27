@@ -650,10 +650,24 @@ async function callInference(
     );
   }
 
-  const url = `https://gateway.ai.cloudflare.com/v1/${gateway.accountId}/${gateway.gatewayId}`;
+  const baseUrl = `https://gateway.ai.cloudflare.com/v1/${gateway.accountId}/${gateway.gatewayId}`;
+  const url = `${baseUrl}/workers-ai/v1/chat/completions`;
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  const gatewayToken = env.AI_GATEWAY_TOKEN as string | undefined;
+  if (gatewayToken) {
+    headers["cf-aig-authorization"] = `Bearer ${gatewayToken}`;
+  }
+  const providerToken = env.AI_PROVIDER_TOKEN as string | undefined;
+  if (providerToken) {
+    headers["Authorization"] = `Bearer ${providerToken}`;
+  }
+
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(body),
   });
 

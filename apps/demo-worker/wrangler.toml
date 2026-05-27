@@ -18,7 +18,7 @@ new_classes = ["RelayDO"]
 [[d1_databases]]
 binding = "DB"
 database_name = "loadstar-db"
-database_id = "TODO-create-database"
+database_id = "24542b44-a4aa-456c-87cd-2a5ba489e927"
 
 [vars]
 AI_GATEWAY_ACCOUNT_ID = ""
