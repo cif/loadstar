@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { LoadstarClient } from "@loadstar/client";
 import type { AgentEvent, Message } from "@loadstar/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ChatMessage } from "./chat-message";
 import { ChatInput } from "./chat-input";
@@ -13,18 +13,22 @@ const AGENT_NAME = import.meta.env.VITE_AGENT_NAME || "researcher";
 
 type Status = "idle" | "thinking" | "tool" | "error";
 
-export function Chat() {
+interface ChatProps {
+  onTraceId?: (traceId: string) => void;
+  clientRef: React.MutableRefObject<LoadstarClient | undefined>;
+}
+
+export function Chat({ onTraceId, clientRef }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [status, setStatus] = useState<Status>("idle");
   const [toolName, setToolName] = useState<string>();
   const [conversationId, setConversationId] = useState<string>();
-  const clientRef = useRef<LoadstarClient>();
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastSeqRef = useRef(0);
 
   useEffect(() => {
     clientRef.current = new LoadstarClient({ baseUrl: API_URL });
-  }, []);
+  }, [clientRef]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -34,13 +38,18 @@ export function Chat() {
 
   const handleEvent = useCallback(
     (event: AgentEvent) => {
+      const data = event.data as Record<string, unknown>;
+      if (data.traceId && onTraceId) {
+        onTraceId(data.traceId as string);
+      }
+
       switch (event.type) {
         case "turn.start":
           setStatus("thinking");
           break;
         case "tool.start":
           setStatus("tool");
-          setToolName((event.data as { name?: string }).name);
+          setToolName((data as { name?: string }).name);
           break;
         case "tool.result":
           setStatus("thinking");
@@ -63,7 +72,7 @@ export function Chat() {
           break;
       }
     },
-    [conversationId]
+    [conversationId, onTraceId, clientRef]
   );
 
   async function handleSend(content: string) {
@@ -95,14 +104,7 @@ export function Chat() {
   }
 
   return (
-    <Card className="flex flex-col h-[100dvh] max-w-2xl mx-auto border-x border-t-0 border-b-0 rounded-none shadow-none">
-      <CardHeader className="border-b shrink-0">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Compass className="h-5 w-5" />
-          loadstar
-          <span className="text-muted-foreground font-normal">demo</span>
-        </CardTitle>
-      </CardHeader>
+    <div className="flex flex-col h-full">
       <CardContent className="flex-1 p-0 overflow-hidden">
         <ScrollArea ref={scrollRef} className="h-full">
           <div className="py-4">
@@ -120,7 +122,10 @@ export function Chat() {
           </div>
         </ScrollArea>
       </CardContent>
-      <ChatInput onSend={handleSend} disabled={status === "thinking" || status === "tool"} />
-    </Card>
+      <ChatInput
+        onSend={handleSend}
+        disabled={status === "thinking" || status === "tool"}
+      />
+    </div>
   );
 }

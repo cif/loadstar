@@ -2,13 +2,16 @@ import type {
   AgentDefinition,
   ConversationStore,
   LoadstarBindings,
+  TraceStore,
 } from "./types.js";
 
 type StoreFactory = (env: LoadstarBindings) => ConversationStore;
+type TraceStoreFactory = (env: LoadstarBindings) => TraceStore;
 
 export function createHandler(
   agents: Map<string, AgentDefinition>,
-  storeFactory: StoreFactory
+  storeFactory: StoreFactory,
+  traceStoreFactory?: TraceStoreFactory
 ) {
   return async function handle(
     request: Request,
@@ -17,6 +20,7 @@ export function createHandler(
     const url = new URL(request.url);
     const method = request.method;
     const store = storeFactory(env);
+    const traces = traceStoreFactory?.(env);
 
     // POST /agents/:name/conversations — create conversation
     const createMatch = url.pathname.match(
@@ -102,9 +106,33 @@ export function createHandler(
       const agentList = Array.from(agents.values()).map((a) => ({
         name: a.name,
         model: a.model,
-        tools: a.tools.map((t) => ({ name: t.name, description: t.description })),
+        tools: a.tools.map((t) => ({
+          name: t.name,
+          description: t.description,
+        })),
       }));
       return json(agentList);
+    }
+
+    // --- Trace endpoints ---
+
+    // GET /traces — list recent traces
+    if (url.pathname === "/traces" && method === "GET") {
+      if (!traces) return json({ error: "Tracing not configured" }, 501);
+      const limit = url.searchParams.get("limit");
+      const list = await traces.listTraces(
+        limit ? parseInt(limit, 10) : undefined
+      );
+      return json(list);
+    }
+
+    // GET /traces/:id — get trace with all spans
+    const traceMatch = url.pathname.match(/^\/traces\/([^/]+)$/);
+    if (traceMatch && method === "GET") {
+      if (!traces) return json({ error: "Tracing not configured" }, 501);
+      const trace = await traces.getTrace(traceMatch[1]);
+      if (!trace) return json({ error: "Trace not found" }, 404);
+      return json(trace);
     }
 
     return json({ error: "Not found" }, 404);

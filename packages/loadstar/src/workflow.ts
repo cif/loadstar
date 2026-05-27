@@ -11,6 +11,7 @@ import type {
   Message,
   ToolCall,
   ToolResult,
+  TraceStore,
   WorkflowPayload,
 } from "./types.js";
 
@@ -38,13 +39,22 @@ interface InferenceResponse {
     };
     finish_reason: string;
   }[];
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
 }
 
-type WorkflowClass = typeof WorkflowEntrypoint<LoadstarBindings, WorkflowPayload>;
+type WorkflowClass = typeof WorkflowEntrypoint<
+  LoadstarBindings,
+  WorkflowPayload
+>;
 
 export function createAgentWorkflow(
   agents: Map<string, AgentDefinition>,
-  storeFactory: (env: LoadstarBindings) => ConversationStore
+  storeFactory: (env: LoadstarBindings) => ConversationStore,
+  traceStoreFactory?: (env: LoadstarBindings) => TraceStore
 ): WorkflowClass {
   return class AgentWorkflow extends WorkflowEntrypoint<
     LoadstarBindings,
@@ -60,48 +70,194 @@ export function createAgentWorkflow(
       if (!agentDef) throw new Error(`Unknown agent: ${agentName}`);
 
       const store = storeFactory(this.env);
+      const traces = traceStoreFactory?.(this.env);
 
-      await step.do("persist-user-message", async () => {
-        await store.addMessage(conversationId, {
-          conversationId,
-          role: "user",
-          content: message,
+      const traceId = crypto.randomUUID();
+      const rootSpanId = crypto.randomUUID();
+
+      if (traces) {
+        await step.do("trace-init", async () => {
+          await traces.createTrace({
+            traceId,
+            conversationId,
+            agentName,
+            startedAt: new Date().toISOString(),
+            input: message,
+          });
+          await traces.createSpan({
+            spanId: rootSpanId,
+            traceId,
+            parentSpanId: null,
+            name: `agent:${agentName}`,
+            kind: "workflow",
+            status: "running",
+            startedAt: new Date().toISOString(),
+            attributes: { agentName, conversationId, model: agentDef.model },
+            input: message,
+            output: null,
+            error: null,
+          });
         });
+      }
+
+      try {
+        const result = await this.runAgent(
+          step,
+          agentDef,
+          store,
+          traces,
+          traceId,
+          rootSpanId,
+          conversationId,
+          agentName,
+          message,
+          relayId
+        );
+
+        if (traces) {
+          await step.do("trace-end-ok", async () => {
+            await traces.endSpan(rootSpanId, "ok", result.response);
+            await traces.endTrace(traceId, "ok");
+          });
+        }
+
+        return result;
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorStack =
+          err instanceof Error ? err.stack ?? errorMsg : errorMsg;
+        if (traces) {
+          await step.do("trace-end-error", async () => {
+            await traces.endSpan(rootSpanId, "error", null, errorStack);
+            await traces.endTrace(traceId, "error", errorStack);
+          });
+        }
+        throw err;
+      }
+    }
+
+    private async runAgent(
+      step: WorkflowStep,
+      agentDef: AgentDefinition,
+      store: ConversationStore,
+      traces: TraceStore | undefined,
+      traceId: string,
+      rootSpanId: string,
+      conversationId: string,
+      agentName: string,
+      message: string,
+      relayId: string | undefined
+    ) {
+      const persistSpanId = crypto.randomUUID();
+      await this.traced(step, traces, "persist-user-message", {
+        traceId,
+        parentSpanId: rootSpanId,
+        spanId: persistSpanId,
+        kind: "persist",
+        input: JSON.stringify({ role: "user", content: message }),
+        attributes: { operation: "addMessage", role: "user" },
+        fn: async () => {
+          await store.addMessage(conversationId, {
+            conversationId,
+            role: "user",
+            content: message,
+          });
+          return "ok";
+        },
       });
 
-      const history = await step.do("load-history", async () => {
-        return store.getMessages(conversationId);
+      const history = await this.traced(step, traces, "load-history", {
+        traceId,
+        parentSpanId: rootSpanId,
+        spanId: crypto.randomUUID(),
+        kind: "persist",
+        input: conversationId,
+        attributes: { operation: "getMessages" },
+        fn: async () => store.getMessages(conversationId),
       });
 
-      const system =
-        typeof agentDef.system === "function"
-          ? await step.do<string>("resolve-system-prompt", async () => {
-              return (agentDef.system as Function)({
+      let system: string;
+      if (typeof agentDef.system === "function") {
+        system = await this.traced(
+          step,
+          traces,
+          "resolve-system-prompt",
+          {
+            traceId,
+            parentSpanId: rootSpanId,
+            spanId: crypto.randomUUID(),
+            kind: "system",
+            input: null,
+            attributes: { dynamic: true },
+            fn: async () =>
+              (agentDef.system as Function)({
                 conversationId,
                 env: this.env,
-              });
-            })
-          : agentDef.system;
+              }),
+          }
+        );
+      } else {
+        system = agentDef.system;
+      }
 
-      const inferenceMessages = buildMessages(system as string, history);
+      const inferenceMessages = buildMessages(system, history);
       let turnCount = 0;
       const maxTurns = agentDef.maxTurns ?? 10;
 
       while (turnCount < maxTurns) {
         turnCount++;
+        const turnSpanId = crypto.randomUUID();
 
         pushEvent(this.env, relayId, {
           type: "turn.start",
           conversationId,
-          data: { turn: turnCount },
+          data: { turn: turnCount, traceId },
           seq: 0,
           timestamp: new Date().toISOString(),
         });
 
-        const response = await step.do(
+        const response = await this.traced(
+          step,
+          traces,
           `inference-${turnCount}`,
-          async () => {
-            return callInference(this.env, agentDef, inferenceMessages);
+          {
+            traceId,
+            parentSpanId: rootSpanId,
+            spanId: turnSpanId,
+            kind: "inference",
+            input: JSON.stringify(
+              inferenceMessages.slice(-5).map((m) => ({
+                role: m.role,
+                content:
+                  typeof m.content === "string"
+                    ? m.content.slice(0, 500)
+                    : "[tool_calls]",
+              }))
+            ),
+            attributes: {
+              model: agentDef.model,
+              turn: turnCount,
+              messageCount: inferenceMessages.length,
+            },
+            fn: async () =>
+              callInference(this.env, agentDef, inferenceMessages),
+            onSuccess: (res: InferenceResponse) => ({
+              output: JSON.stringify({
+                finish_reason: res.choices[0]?.finish_reason,
+                content: res.choices[0]?.message.content?.slice(0, 500),
+                tool_calls: res.choices[0]?.message.tool_calls?.map((tc) => ({
+                  name: tc.function.name,
+                })),
+                usage: res.usage,
+              }),
+              attributes: {
+                finish_reason: res.choices[0]?.finish_reason,
+                prompt_tokens: res.usage?.prompt_tokens,
+                completion_tokens: res.usage?.completion_tokens,
+                total_tokens: res.usage?.total_tokens,
+                has_tool_calls: !!res.choices[0]?.message.tool_calls?.length,
+              },
+            }),
           }
         );
 
@@ -112,18 +268,32 @@ export function createAgentWorkflow(
         const toolCalls = choice.message.tool_calls;
 
         if (!toolCalls || toolCalls.length === 0) {
-          await step.do(`persist-response-${turnCount}`, async () => {
-            await store.addMessage(conversationId, {
-              conversationId,
-              role: "assistant",
-              content: assistantContent,
-            });
-          });
+          await this.traced(
+            step,
+            traces,
+            `persist-response-${turnCount}`,
+            {
+              traceId,
+              parentSpanId: rootSpanId,
+              spanId: crypto.randomUUID(),
+              kind: "persist",
+              input: assistantContent.slice(0, 200),
+              attributes: { operation: "addMessage", role: "assistant" },
+              fn: async () => {
+                await store.addMessage(conversationId, {
+                  conversationId,
+                  role: "assistant",
+                  content: assistantContent,
+                });
+                return "ok";
+              },
+            }
+          );
 
           pushEvent(this.env, relayId, {
             type: "turn.complete",
             conversationId,
-            data: { content: assistantContent, turn: turnCount },
+            data: { content: assistantContent, turn: turnCount, traceId },
             seq: 0,
             timestamp: new Date().toISOString(),
           });
@@ -142,14 +312,32 @@ export function createAgentWorkflow(
           })
         );
 
-        await step.do(`persist-assistant-${turnCount}`, async () => {
-          await store.addMessage(conversationId, {
-            conversationId,
-            role: "assistant",
-            content: assistantContent,
-            toolCalls: mappedToolCalls,
-          });
-        });
+        await this.traced(
+          step,
+          traces,
+          `persist-assistant-${turnCount}`,
+          {
+            traceId,
+            parentSpanId: rootSpanId,
+            spanId: crypto.randomUUID(),
+            kind: "persist",
+            input: null,
+            attributes: {
+              operation: "addMessage",
+              role: "assistant",
+              toolCallCount: mappedToolCalls.length,
+            },
+            fn: async () => {
+              await store.addMessage(conversationId, {
+                conversationId,
+                role: "assistant",
+                content: assistantContent,
+                toolCalls: mappedToolCalls,
+              });
+              return "ok";
+            },
+          }
+        );
 
         inferenceMessages.push({
           role: "assistant",
@@ -163,47 +351,64 @@ export function createAgentWorkflow(
           pushEvent(this.env, relayId, {
             type: "tool.start",
             conversationId,
-            data: { toolCallId: tc.id, name: tc.name },
+            data: { toolCallId: tc.id, name: tc.name, traceId },
             seq: 0,
             timestamp: new Date().toISOString(),
           });
 
-          const result = await step.do(
+          const result = await this.traced(
+            step,
+            traces,
             `tool-${turnCount}-${tc.name}-${tc.id}`,
-            async () => {
-              const toolDef = agentDef.tools.find((t) => t.name === tc.name);
-              if (!toolDef) {
-                return {
-                  toolCallId: tc.id,
-                  name: tc.name,
-                  result: `Unknown tool: ${tc.name}`,
-                  isError: true,
-                };
-              }
-
-              try {
-                const params = toolDef.parameters.parse(
-                  JSON.parse(tc.arguments)
+            {
+              traceId,
+              parentSpanId: turnSpanId,
+              spanId: crypto.randomUUID(),
+              kind: "tool",
+              input: tc.arguments,
+              attributes: {
+                toolName: tc.name,
+                toolCallId: tc.id,
+                turn: turnCount,
+              },
+              fn: async () => {
+                const toolDef = agentDef.tools.find(
+                  (t) => t.name === tc.name
                 );
-                const output = await toolDef.execute(params, {
-                  conversationId,
-                  agentName,
-                  env: this.env as unknown as Record<string, unknown>,
-                });
-                return {
-                  toolCallId: tc.id,
-                  name: tc.name,
-                  result: JSON.stringify(output),
-                };
-              } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err);
-                return {
-                  toolCallId: tc.id,
-                  name: tc.name,
-                  result: msg,
-                  isError: true,
-                };
-              }
+                if (!toolDef) {
+                  return {
+                    toolCallId: tc.id,
+                    name: tc.name,
+                    result: `Unknown tool: ${tc.name}`,
+                    isError: true,
+                  };
+                }
+
+                try {
+                  const params = toolDef.parameters.parse(
+                    JSON.parse(tc.arguments)
+                  );
+                  const output = await toolDef.execute(params, {
+                    conversationId,
+                    agentName,
+                    env: this.env as unknown as Record<string, unknown>,
+                  });
+                  return {
+                    toolCallId: tc.id,
+                    name: tc.name,
+                    result: JSON.stringify(output),
+                  };
+                } catch (err) {
+                  const msg =
+                    err instanceof Error ? err.message : String(err);
+                  return {
+                    toolCallId: tc.id,
+                    name: tc.name,
+                    result: msg,
+                    isError: true,
+                  };
+                }
+              },
             }
           );
 
@@ -217,6 +422,7 @@ export function createAgentWorkflow(
               name: tc.name,
               result: result.result,
               isError: result.isError,
+              traceId,
             },
             seq: 0,
             timestamp: new Date().toISOString(),
@@ -229,14 +435,32 @@ export function createAgentWorkflow(
           });
         }
 
-        await step.do(`persist-tool-results-${turnCount}`, async () => {
-          await store.addMessage(conversationId, {
-            conversationId,
-            role: "tool",
-            content: "",
-            toolResults,
-          });
-        });
+        await this.traced(
+          step,
+          traces,
+          `persist-tool-results-${turnCount}`,
+          {
+            traceId,
+            parentSpanId: rootSpanId,
+            spanId: crypto.randomUUID(),
+            kind: "persist",
+            input: null,
+            attributes: {
+              operation: "addMessage",
+              role: "tool",
+              resultCount: toolResults.length,
+            },
+            fn: async () => {
+              await store.addMessage(conversationId, {
+                conversationId,
+                role: "tool",
+                content: "",
+                toolResults,
+              });
+              return "ok";
+            },
+          }
+        );
       }
 
       const finalMsg = "Max turns reached.";
@@ -250,10 +474,75 @@ export function createAgentWorkflow(
 
       return { conversationId, response: finalMsg };
     }
+
+    private async traced<T extends Rpc.Serializable<T>>(
+      step: WorkflowStep,
+      traces: TraceStore | undefined,
+      stepName: string,
+      opts: {
+        traceId: string;
+        parentSpanId: string;
+        spanId: string;
+        kind: "inference" | "tool" | "persist" | "system";
+        input: string | null;
+        attributes: Record<string, unknown>;
+        fn: () => Promise<T>;
+        onSuccess?: (
+          result: T
+        ) => { output?: string; attributes?: Record<string, unknown> };
+      }
+    ): Promise<T> {
+      if (!traces) {
+        return step.do(stepName, async () => opts.fn());
+      }
+
+      return step.do(stepName, async () => {
+        await traces.createSpan({
+          spanId: opts.spanId,
+          traceId: opts.traceId,
+          parentSpanId: opts.parentSpanId,
+          name: stepName,
+          kind: opts.kind,
+          status: "running",
+          startedAt: new Date().toISOString(),
+          attributes: opts.attributes,
+          input: opts.input,
+          output: null,
+          error: null,
+        });
+
+        try {
+          const result = await opts.fn();
+          const extra = opts.onSuccess?.(result);
+          const output =
+            extra?.output ??
+            (typeof result === "string"
+              ? result
+              : JSON.stringify(result)?.slice(0, 2000));
+
+          if (extra?.attributes) {
+            // Merge additional attributes discovered at runtime
+            Object.assign(opts.attributes, extra.attributes);
+          }
+
+          await traces.endSpan(opts.spanId, "ok", output);
+          return result;
+        } catch (err) {
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          const errorStack =
+            err instanceof Error ? err.stack ?? errorMsg : errorMsg;
+          await traces.endSpan(opts.spanId, "error", null, errorStack);
+          throw err;
+        }
+      });
+    }
   };
 }
 
-function buildMessages(system: string, history: Message[]): InferenceMessage[] {
+function buildMessages(
+  system: string,
+  history: Message[]
+): InferenceMessage[] {
   const messages: InferenceMessage[] = [{ role: "system", content: system }];
 
   for (const msg of history) {

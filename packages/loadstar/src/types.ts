@@ -110,3 +110,57 @@ export interface WorkflowPayload {
   message: string;
   relayId?: string;
 }
+
+// --- Tracing (OTel-compatible) ---
+
+export type SpanKind = "workflow" | "inference" | "tool" | "persist" | "system";
+export type SpanStatus = "ok" | "error" | "running";
+
+export interface Trace {
+  traceId: string;
+  conversationId: string;
+  agentName: string;
+  status: SpanStatus;
+  startedAt: string;
+  endedAt: string | null;
+  durationMs: number | null;
+  input: string;
+}
+
+export interface Span {
+  spanId: string;
+  traceId: string;
+  parentSpanId: string | null;
+  name: string;
+  kind: SpanKind;
+  status: SpanStatus;
+  startedAt: string;
+  endedAt: string | null;
+  durationMs: number | null;
+  attributes: Record<string, unknown>;
+  events: SpanEvent[];
+  input: string | null;
+  output: string | null;
+  error: string | null;
+}
+
+export interface SpanEvent {
+  name: string;
+  timestamp: string;
+  attributes?: Record<string, unknown>;
+}
+
+export interface TraceWithSpans extends Trace {
+  spans: Span[];
+}
+
+export interface TraceStore {
+  createTrace(trace: Omit<Trace, "endedAt" | "durationMs" | "status"> & { status?: SpanStatus }): Promise<Trace>;
+  endTrace(traceId: string, status: SpanStatus, error?: string): Promise<void>;
+  getTrace(traceId: string): Promise<TraceWithSpans | null>;
+  listTraces(limit?: number): Promise<Trace[]>;
+
+  createSpan(span: Omit<Span, "endedAt" | "durationMs" | "events"> & { events?: SpanEvent[] }): Promise<Span>;
+  endSpan(spanId: string, status: SpanStatus, output?: string | null, error?: string | null): Promise<void>;
+  addSpanEvent(spanId: string, event: SpanEvent): Promise<void>;
+}

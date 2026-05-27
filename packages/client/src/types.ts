@@ -58,6 +58,47 @@ export interface SendMessageResult {
   conversationId: string;
 }
 
+export type SpanKind = "workflow" | "inference" | "tool" | "persist" | "system";
+export type SpanStatus = "ok" | "error" | "running";
+
+export interface Trace {
+  traceId: string;
+  conversationId: string;
+  agentName: string;
+  status: SpanStatus;
+  startedAt: string;
+  endedAt: string | null;
+  durationMs: number | null;
+  input: string;
+}
+
+export interface Span {
+  spanId: string;
+  traceId: string;
+  parentSpanId: string | null;
+  name: string;
+  kind: SpanKind;
+  status: SpanStatus;
+  startedAt: string;
+  endedAt: string | null;
+  durationMs: number | null;
+  attributes: Record<string, unknown>;
+  events: SpanEvent[];
+  input: string | null;
+  output: string | null;
+  error: string | null;
+}
+
+export interface SpanEvent {
+  name: string;
+  timestamp: string;
+  attributes?: Record<string, unknown>;
+}
+
+export interface TraceWithSpans extends Trace {
+  spans: Span[];
+}
+
 export interface LoadstarClientOptions {
   baseUrl: string;
 }

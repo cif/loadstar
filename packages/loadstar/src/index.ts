@@ -2,14 +2,17 @@ import type {
   AgentDefinition,
   ConversationStore,
   LoadstarBindings,
+  TraceStore,
 } from "./types.js";
 import { createAgentWorkflow } from "./workflow.js";
 import { createHandler } from "./handler.js";
 import { D1ConversationStore } from "./adapters/d1.js";
+import { D1TraceStore } from "./adapters/d1-traces.js";
 
 export { agent, tool } from "./agent.js";
 export { RelayDO } from "./relay.js";
 export { D1ConversationStore } from "./adapters/d1.js";
+export { D1TraceStore } from "./adapters/d1-traces.js";
 export type {
   AgentDefinition,
   AgentEvent,
@@ -17,16 +20,24 @@ export type {
   ConversationStore,
   LoadstarBindings,
   Message,
+  Span,
+  SpanEvent,
+  SpanKind,
+  SpanStatus,
   ToolCall,
   ToolContext,
   ToolDefinition,
   ToolResult,
+  Trace,
+  TraceStore,
+  TraceWithSpans,
   WorkflowPayload,
 } from "./types.js";
 
 interface LoadstarConfig {
   agents: AgentDefinition[];
   store?: (env: LoadstarBindings) => ConversationStore;
+  traceStore?: (env: LoadstarBindings) => TraceStore;
 }
 
 export function loadstar(config: LoadstarConfig) {
@@ -46,7 +57,18 @@ export function loadstar(config: LoadstarConfig) {
       return new D1ConversationStore(env.DB);
     });
 
-  const AgentWorkflow = createAgentWorkflow(agentMap, storeFactory);
+  const traceStoreFactory =
+    config.traceStore ??
+    ((env: LoadstarBindings) => {
+      if (!env.DB) return undefined as unknown as TraceStore;
+      return new D1TraceStore(env.DB);
+    });
+
+  const AgentWorkflow = createAgentWorkflow(
+    agentMap,
+    storeFactory,
+    traceStoreFactory
+  );
 
   return {
     AgentWorkflow,
@@ -61,7 +83,7 @@ export function loadstar(config: LoadstarConfig) {
           },
         });
       }
-      const handler = createHandler(agentMap, storeFactory);
+      const handler = createHandler(agentMap, storeFactory, traceStoreFactory);
       return handler(request, env);
     },
 
@@ -69,6 +91,8 @@ export function loadstar(config: LoadstarConfig) {
       if (env.DB) {
         const store = new D1ConversationStore(env.DB);
         await store.migrate();
+        const traceStore = new D1TraceStore(env.DB);
+        await traceStore.migrate();
       }
     },
   };

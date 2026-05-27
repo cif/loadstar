@@ -5,6 +5,8 @@ import type {
   LoadstarClientOptions,
   Message,
   SendMessageResult,
+  Trace,
+  TraceWithSpans,
 } from "./types.js";
 
 export class LoadstarClient {
@@ -96,6 +98,18 @@ export class LoadstarClient {
       this.ws.close();
       this.ws = null;
     }
+  }
+
+  async listTraces(limit?: number): Promise<Trace[]> {
+    const params = limit ? `?limit=${limit}` : "";
+    const res = await fetch(`${this.baseUrl}/traces${params}`);
+    return res.json();
+  }
+
+  async getTrace(traceId: string): Promise<TraceWithSpans> {
+    const res = await fetch(`${this.baseUrl}/traces/${traceId}`);
+    if (!res.ok) throw new Error(`Trace not found: ${traceId}`);
+    return res.json();
   }
 
   on(event: AgentEvent["type"] | "*", listener: (event: AgentEvent) => void): () => void {

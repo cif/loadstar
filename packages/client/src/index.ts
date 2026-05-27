@@ -5,5 +5,11 @@ export type {
   Message,
   AgentInfo,
   SendMessageResult,
+  Trace,
+  TraceWithSpans,
+  Span,
+  SpanEvent,
+  SpanKind,
+  SpanStatus,
   LoadstarClientOptions,
 } from "./types.js";
