@@ -2,6 +2,11 @@ name = "loadstar-demo"
 main = "src/index.ts"
 compatibility_date = "2025-01-01"
 
+[assets]
+directory = "../demo-client/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
 [[workflows]]
 name = "agent-workflow"
 class_name = "AgentWorkflow"
@@ -20,6 +25,5 @@ binding = "DB"
 database_name = "loadstar-db"
 database_id = "24542b44-a4aa-456c-87cd-2a5ba489e927"
 
-[vars]
-AI_GATEWAY_ACCOUNT_ID = ""
-AI_GATEWAY_ID = ""
+# AI_GATEWAY_ACCOUNT_ID, AI_GATEWAY_ID, AI_GATEWAY_TOKEN, AI_PROVIDER_TOKEN
+# Set via: wrangler secret put <NAME>

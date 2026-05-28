@@ -8,7 +8,7 @@ import { ChatInput } from "./chat-input";
 import { StatusIndicator } from "./status-indicator";
 import { Compass } from "lucide-react";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8787";
+const API_URL = import.meta.env.VITE_API_URL ?? "";
 const AGENT_NAME = import.meta.env.VITE_AGENT_NAME || "researcher";
 
 type Status = "idle" | "thinking" | "tool" | "error";

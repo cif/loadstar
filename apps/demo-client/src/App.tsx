@@ -7,7 +7,7 @@ import { ConversationList } from "./components/conversation-list";
 import { Activity, BarChart3, MessageSquare } from "lucide-react";
 import { cn } from "./lib/utils";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8787";
+const API_URL = import.meta.env.VITE_API_URL ?? "";
 
 type RightTab = "traces" | "metrics";
 
