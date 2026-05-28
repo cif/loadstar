@@ -36,10 +36,6 @@ export function Chat({
   const lastSeqRef = useRef(0);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
 
-  useEffect(() => {
-    clientRef.current = new LoadstarClient({ baseUrl: API_URL });
-  }, [clientRef]);
-
   // Load existing conversation messages
   useEffect(() => {
     if (initialConvId && clientRef.current) {

@@ -1,10 +1,10 @@
-import { useCallback, useRef, useState } from "react";
-import type { LoadstarClient, Message } from "@loadstar/client";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { LoadstarClient } from "@loadstar/client";
 import { Chat } from "./components/chat";
 import { TracePanel } from "./components/trace-panel";
 import { MetricsDashboard } from "./components/metrics-dashboard";
 import { ConversationList } from "./components/conversation-list";
-import { Compass, Activity, BarChart3, MessageSquare } from "lucide-react";
+import { Activity, BarChart3, MessageSquare } from "lucide-react";
 import { cn } from "./lib/utils";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8787";
@@ -16,14 +16,18 @@ function App() {
   const [rightTab, setRightTab] = useState<RightTab>("traces");
   const [conversationId, setConversationId] = useState<string>();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [client, setClient] = useState<LoadstarClient | null>(null);
   const clientRef = useRef<LoadstarClient>();
 
-  const handleSelectConversation = useCallback(
-    async (id: string) => {
-      setConversationId(id);
-    },
-    []
-  );
+  useEffect(() => {
+    const c = new LoadstarClient({ baseUrl: API_URL });
+    clientRef.current = c;
+    setClient(c);
+  }, []);
+
+  const handleSelectConversation = useCallback((id: string) => {
+    setConversationId(id);
+  }, []);
 
   const handleNewConversation = useCallback(() => {
     setConversationId(undefined);
@@ -31,11 +35,10 @@ function App() {
 
   return (
     <div className="flex h-[100dvh] bg-background">
-      {/* Conversation sidebar */}
       {sidebarOpen && (
         <div className="w-[220px] shrink-0 border-r flex flex-col">
           <ConversationList
-            client={clientRef.current ?? null}
+            client={client}
             activeId={conversationId}
             onSelect={handleSelectConversation}
             onNew={handleNewConversation}
@@ -43,7 +46,6 @@ function App() {
         </div>
       )}
 
-      {/* Chat panel */}
       <div className="flex flex-col flex-1 min-w-0 border-r">
         <header className="flex items-center justify-between px-4 py-3 border-b shrink-0">
           <div className="flex items-center gap-2">
@@ -68,7 +70,6 @@ function App() {
         />
       </div>
 
-      {/* Right panel — Traces / Metrics */}
       <div className="w-[480px] shrink-0 flex flex-col bg-card">
         <div className="flex border-b shrink-0">
           <button
@@ -99,7 +100,7 @@ function App() {
         <div className="flex-1 overflow-hidden">
           {rightTab === "traces" ? (
             <TracePanel
-              client={clientRef.current ?? null}
+              client={client}
               activeTraceId={activeTraceId}
             />
           ) : (
