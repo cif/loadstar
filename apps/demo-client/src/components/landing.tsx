@@ -13,25 +13,25 @@ import {
 
 export function Landing() {
   return (
-    <div className="min-h-screen bg-[#09090b] text-white">
+    <div className="min-h-screen bg-background text-foreground">
       {/* Nav */}
-      <nav className="flex items-center justify-between px-8 py-4 border-b border-white/10">
+      <nav className="flex items-center justify-between px-8 py-4 border-b border-border">
         <div className="flex items-center gap-2 text-lg font-semibold">
           <Compass className="h-5 w-5" />
           loadstar
         </div>
-        <div className="flex items-center gap-6 text-sm text-white/60">
-          <Link to="/arch" className="hover:text-white transition-colors">
+        <div className="flex items-center gap-6 text-sm text-muted-foreground">
+          <Link to="/arch" className="hover:text-foreground transition-colors">
             Architecture
           </Link>
-          <Link to="/demo" className="hover:text-white transition-colors">
+          <Link to="/demo" className="hover:text-foreground transition-colors">
             Demo
           </Link>
           <a
             href="https://github.com/cif/loadstar"
             target="_blank"
             rel="noopener"
-            className="hover:text-white transition-colors"
+            className="hover:text-foreground transition-colors"
           >
             GitHub
           </a>
@@ -48,7 +48,7 @@ export function Landing() {
           Durable AI agents on{" "}
           <span className="text-orange-400">Cloudflare</span>
         </h1>
-        <p className="text-lg text-white/50 mt-6 max-w-2xl leading-relaxed">
+        <p className="text-lg text-muted-foreground mt-6 max-w-2xl leading-relaxed">
           Cloudflare's Agents SDK builds on Durable Objects that get killed
           during deployments. Loadstar moves your agent runtime to Workflows —
           every inference call and tool execution is checkpointed and
@@ -58,7 +58,7 @@ export function Landing() {
           <Link to="/demo">
             <Button
               size="lg"
-              className="bg-white text-black hover:bg-white/90 gap-2"
+              className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
             >
               Try the demo
               <ArrowRight className="h-4 w-4" />
@@ -68,7 +68,7 @@ export function Landing() {
             <Button
               size="lg"
               variant="outline"
-              className="border-white/20 text-white hover:bg-white/10 gap-2"
+              className="border-border text-foreground hover:bg-accent gap-2"
             >
               <Layers className="h-4 w-4" />
               Architecture
@@ -122,7 +122,7 @@ export function Landing() {
         <h2 className="text-2xl font-semibold mb-6 text-center">
           Define an agent in 20 lines
         </h2>
-        <pre className="bg-white/5 border border-white/10 rounded-xl p-6 text-sm text-white/80 overflow-x-auto leading-relaxed">
+        <pre className="bg-muted/50 border border-border rounded-xl p-6 text-sm text-foreground/80 overflow-x-auto leading-relaxed">
           <code>{`import { loadstar, agent, tool } from "loadstar";
 import { z } from "zod";
 
@@ -150,13 +150,13 @@ const app = loadstar({
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-white/10 px-8 py-6 text-center text-xs text-white/30">
+      <footer className="border-t border-border px-8 py-6 text-center text-xs text-muted-foreground">
         loadstar — MIT License —{" "}
         <a
           href="https://github.com/cif/loadstar"
           target="_blank"
           rel="noopener"
-          className="underline hover:text-white/50"
+          className="underline hover:text-foreground/50"
         >
           github.com/cif/loadstar
         </a>
@@ -177,10 +177,10 @@ function FeatureCard({
   color: string;
 }) {
   return (
-    <div className="border border-white/10 rounded-xl p-5 bg-white/[0.02] hover:bg-white/[0.04] transition-colors">
+    <div className="border border-border rounded-xl p-5 bg-muted/30 hover:bg-muted/50 transition-colors">
       <Icon className={`h-5 w-5 ${color} mb-3`} />
       <h3 className="font-semibold text-sm mb-2">{title}</h3>
-      <p className="text-xs text-white/40 leading-relaxed">{description}</p>
+      <p className="text-xs text-muted-foreground leading-relaxed">{description}</p>
     </div>
   );
 }

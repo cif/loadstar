@@ -165,36 +165,47 @@ export function ArchitectureDiagram() {
     ctx.scale(dpr, dpr);
 
     let frame = 0;
+    const isDark = document.documentElement.classList.contains("dark");
+    const bg = isDark ? "#09090b" : "#ffffff";
+    const textMain = isDark ? "rgba(255,255,255,0.9)" : "rgba(0,0,0,0.85)";
+    const textMuted = isDark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.45)";
+    const textSubtle = isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.15)";
+    const borderSubtle = isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.08)";
+    const nodeBg = isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)";
+    const edgeDefault = isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.15)";
+    const edgeArrow = isDark ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.3)";
 
     function draw() {
       if (!ctx) return;
       ctx.clearRect(0, 0, dims.w, dims.h);
 
-      ctx.fillStyle = "#09090b";
+      ctx.fillStyle = bg;
       ctx.fillRect(0, 0, dims.w, dims.h);
 
       // Cloudflare region background
-      ctx.strokeStyle = "rgba(255,255,255,0.06)";
+      ctx.strokeStyle = borderSubtle;
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 4]);
       roundRect(ctx, 340, 130, 860, 400, 16);
       ctx.stroke();
       ctx.setLineDash([]);
 
-      ctx.fillStyle = "rgba(255,255,255,0.15)";
+      ctx.fillStyle = textSubtle;
       ctx.font = "11px system-ui";
       ctx.fillText("Cloudflare", 360, 155);
+
+      const theme = { textMain, textMuted, textSubtle, nodeBg, edgeDefault, edgeArrow };
 
       // Draw edges
       for (const edge of EDGES) {
         const from = NODES.find((n) => n.id === edge.from)!;
         const to = NODES.find((n) => n.id === edge.to)!;
-        drawEdge(ctx, from, to, edge, frame);
+        drawEdge(ctx, from, to, edge, frame, theme);
       }
 
       // Draw nodes
       for (const node of NODES) {
-        drawNode(ctx, node, hoveredNode === node.id, frame);
+        drawNode(ctx, node, hoveredNode === node.id, frame, theme);
       }
 
       // Draw annotations
@@ -207,10 +218,10 @@ export function ArchitectureDiagram() {
       }
 
       // Title
-      ctx.fillStyle = "rgba(255,255,255,0.9)";
+      ctx.fillStyle = textMain;
       ctx.font = "bold 20px system-ui";
       ctx.fillText("loadstar architecture", 80, 50);
-      ctx.fillStyle = "rgba(255,255,255,0.4)";
+      ctx.fillStyle = textMuted;
       ctx.font = "14px system-ui";
       ctx.fillText(
         "Durable agent execution on Cloudflare Workflows",
@@ -232,7 +243,7 @@ export function ArchitectureDiagram() {
         ctx.beginPath();
         ctx.arc(lx + 5, legendY, 4, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = "rgba(255,255,255,0.5)";
+        ctx.fillStyle = textMuted;
         ctx.fillText(l.label, lx + 14, legendY + 4);
         lx += ctx.measureText(l.label).width + 30;
       }
@@ -258,7 +269,7 @@ export function ArchitectureDiagram() {
   }
 
   return (
-    <div className="min-h-screen bg-[#09090b] flex items-center justify-center p-8">
+    <div className="min-h-screen bg-background flex items-center justify-center p-8">
       <canvas
         ref={canvasRef}
         style={{ width: dims.w, height: dims.h }}
@@ -270,22 +281,30 @@ export function ArchitectureDiagram() {
   );
 }
 
+type Theme = {
+  textMain: string;
+  textMuted: string;
+  textSubtle: string;
+  nodeBg: string;
+  edgeDefault: string;
+  edgeArrow: string;
+};
+
 function drawNode(
   ctx: CanvasRenderingContext2D,
   node: Node,
   hovered: boolean,
-  frame: number
+  frame: number,
+  theme: Theme
 ) {
   const { x, y, w, h, color, label, sublabel } = node;
 
-  // Glow
   if (hovered) {
     ctx.shadowColor = color;
     ctx.shadowBlur = 20;
   }
 
-  // Background
-  ctx.fillStyle = hovered ? color + "30" : "rgba(255,255,255,0.04)";
+  ctx.fillStyle = hovered ? color + "30" : theme.nodeBg;
   ctx.strokeStyle = hovered ? color : color + "60";
   ctx.lineWidth = hovered ? 2 : 1;
   ctx.beginPath();
@@ -296,25 +315,21 @@ function drawNode(
   ctx.shadowColor = "transparent";
   ctx.shadowBlur = 0;
 
-  // Icon dot
   ctx.fillStyle = color;
   ctx.beginPath();
   ctx.arc(x + 20, y + h / 2 - 4, 5, 0, Math.PI * 2);
   ctx.fill();
 
-  // Label
-  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.fillStyle = theme.textMain;
   ctx.font = "bold 13px system-ui";
   ctx.fillText(label, x + 34, y + h / 2 - 1);
 
-  // Sublabel
   if (sublabel) {
-    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.fillStyle = theme.textMuted;
     ctx.font = "11px system-ui";
     ctx.fillText(sublabel, x + 34, y + h / 2 + 15);
   }
 
-  // Pulse for workflow node
   if (node.id === "workflow") {
     const pulse = Math.sin(frame * 0.03) * 0.5 + 0.5;
     ctx.strokeStyle = color + Math.round(pulse * 60).toString(16).padStart(2, "0");
@@ -330,21 +345,21 @@ function drawEdge(
   from: Node,
   to: Node,
   edge: Edge,
-  _frame: number
+  _frame: number,
+  theme: Theme
 ) {
   const fx = from.x + from.w;
   const fy = from.y + from.h / 2;
   let tx = to.x;
   let ty = to.y + to.h / 2;
 
-  // Handle edges going down
   if (Math.abs(from.x - to.x) < 50) {
     const fxc = from.x + from.w / 2;
     const fyc = from.y + from.h;
     tx = to.x + to.w / 2;
     ty = to.y;
 
-    ctx.strokeStyle = edge.color ?? "rgba(255,255,255,0.15)";
+    ctx.strokeStyle = edge.color ?? theme.edgeDefault;
     ctx.lineWidth = 1;
     if (edge.dashed) ctx.setLineDash([4, 4]);
     ctx.beginPath();
@@ -353,33 +368,29 @@ function drawEdge(
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Label
     if (edge.label) {
       const mx = (fxc + tx) / 2;
       const my = (fyc + ty) / 2;
-      ctx.fillStyle = edge.color ?? "rgba(255,255,255,0.3)";
+      ctx.fillStyle = edge.color ?? theme.edgeArrow;
       ctx.font = "10px system-ui";
       ctx.fillText(edge.label, mx + 6, my);
     }
     return;
   }
 
-  ctx.strokeStyle = edge.color ?? "rgba(255,255,255,0.15)";
+  ctx.strokeStyle = edge.color ?? theme.edgeDefault;
   ctx.lineWidth = 1;
   if (edge.dashed) ctx.setLineDash([4, 4]);
 
   ctx.beginPath();
   ctx.moveTo(fx, fy);
-
-  // Curved path
   const cpx = (fx + tx) / 2;
   ctx.bezierCurveTo(cpx, fy, cpx, ty, tx, ty);
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // Arrow
   const angle = Math.atan2(ty - fy, tx - fx);
-  ctx.fillStyle = edge.color ?? "rgba(255,255,255,0.3)";
+  ctx.fillStyle = edge.color ?? theme.edgeArrow;
   ctx.beginPath();
   ctx.moveTo(tx, ty);
   ctx.lineTo(tx - 8 * Math.cos(angle - 0.4), ty - 8 * Math.sin(angle - 0.4));
@@ -387,11 +398,10 @@ function drawEdge(
   ctx.closePath();
   ctx.fill();
 
-  // Label
   if (edge.label) {
     const mx = (fx + tx) / 2;
     const my = (fy + ty) / 2 - 8;
-    ctx.fillStyle = edge.color ?? "rgba(255,255,255,0.3)";
+    ctx.fillStyle = edge.color ?? theme.edgeArrow;
     ctx.font = "10px system-ui";
     ctx.textAlign = "center";
     ctx.fillText(edge.label, mx, my);
