@@ -1,49 +1,112 @@
-import { useRef, useState } from "react";
-import type { LoadstarClient } from "@loadstar/client";
+import { useCallback, useRef, useState } from "react";
+import type { LoadstarClient, Message } from "@loadstar/client";
 import { Chat } from "./components/chat";
 import { TracePanel } from "./components/trace-panel";
-import { Compass, Activity } from "lucide-react";
+import { MetricsDashboard } from "./components/metrics-dashboard";
+import { ConversationList } from "./components/conversation-list";
+import { Compass, Activity, BarChart3, MessageSquare } from "lucide-react";
+import { cn } from "./lib/utils";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8787";
+
+type RightTab = "traces" | "metrics";
 
 function App() {
   const [activeTraceId, setActiveTraceId] = useState<string>();
-  const [traceOpen, setTraceOpen] = useState(true);
+  const [rightTab, setRightTab] = useState<RightTab>("traces");
+  const [conversationId, setConversationId] = useState<string>();
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const clientRef = useRef<LoadstarClient>();
+
+  const handleSelectConversation = useCallback(
+    async (id: string) => {
+      setConversationId(id);
+    },
+    []
+  );
+
+  const handleNewConversation = useCallback(() => {
+    setConversationId(undefined);
+  }, []);
 
   return (
     <div className="flex h-[100dvh] bg-background">
+      {/* Conversation sidebar */}
+      {sidebarOpen && (
+        <div className="w-[220px] shrink-0 border-r flex flex-col">
+          <ConversationList
+            client={clientRef.current ?? null}
+            activeId={conversationId}
+            onSelect={handleSelectConversation}
+            onNew={handleNewConversation}
+          />
+        </div>
+      )}
+
       {/* Chat panel */}
       <div className="flex flex-col flex-1 min-w-0 border-r">
         <header className="flex items-center justify-between px-4 py-3 border-b shrink-0">
-          <div className="flex items-center gap-2 text-base font-semibold">
-            <Compass className="h-5 w-5" />
-            loadstar
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="p-1 rounded-md hover:bg-muted transition-colors"
+            >
+              <MessageSquare className="h-4 w-4 text-muted-foreground" />
+            </button>
+            <span className="text-base font-semibold">loadstar</span>
             <span className="text-muted-foreground font-normal text-sm">
               demo
             </span>
           </div>
-          <button
-            onClick={() => setTraceOpen(!traceOpen)}
-            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-muted"
-          >
-            <Activity className="h-3.5 w-3.5" />
-            {traceOpen ? "Hide" : "Show"} traces
-          </button>
         </header>
         <Chat
+          key={conversationId ?? "new"}
           onTraceId={setActiveTraceId}
           clientRef={clientRef}
+          conversationId={conversationId}
+          onConversationCreated={setConversationId}
         />
       </div>
 
-      {/* Trace panel */}
-      {traceOpen && (
-        <div className="w-[480px] shrink-0 border-l bg-card flex flex-col">
-          <TracePanel
-            client={clientRef.current ?? null}
-            activeTraceId={activeTraceId}
-          />
+      {/* Right panel — Traces / Metrics */}
+      <div className="w-[480px] shrink-0 flex flex-col bg-card">
+        <div className="flex border-b shrink-0">
+          <button
+            onClick={() => setRightTab("traces")}
+            className={cn(
+              "flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors border-b-2",
+              rightTab === "traces"
+                ? "border-foreground text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Activity className="h-3.5 w-3.5" />
+            Traces
+          </button>
+          <button
+            onClick={() => setRightTab("metrics")}
+            className={cn(
+              "flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors border-b-2",
+              rightTab === "metrics"
+                ? "border-foreground text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <BarChart3 className="h-3.5 w-3.5" />
+            Metrics
+          </button>
         </div>
-      )}
+        <div className="flex-1 overflow-hidden">
+          {rightTab === "traces" ? (
+            <TracePanel
+              client={clientRef.current ?? null}
+              activeTraceId={activeTraceId}
+            />
+          ) : (
+            <MetricsDashboard />
+          )}
+        </div>
+      </div>
     </div>
   );
 }

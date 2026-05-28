@@ -101,6 +101,13 @@ export function createHandler(
       return stub.fetch(new Request("http://relay/ws", request));
     }
 
+    // GET /conversations — list all conversations
+    if (url.pathname === "/conversations" && method === "GET") {
+      const agentName = url.searchParams.get("agent") ?? undefined;
+      const conversations = await store.listConversations(agentName);
+      return json(conversations);
+    }
+
     // GET /agents — list registered agents
     if (url.pathname === "/agents" && method === "GET") {
       const agentList = Array.from(agents.values()).map((a) => ({
@@ -133,6 +140,73 @@ export function createHandler(
       const trace = await traces.getTrace(traceMatch[1]);
       if (!trace) return json({ error: "Trace not found" }, 404);
       return json(trace);
+    }
+
+    // GET /metrics — aggregated performance metrics
+    if (url.pathname === "/metrics" && method === "GET") {
+      if (!traces) return json({ error: "Tracing not configured" }, 501);
+      if (!env.DB) return json({ error: "No DB" }, 501);
+
+      const db = env.DB;
+      const [traceStats, inferenceStats, toolStats, recentInference, recentTools] =
+        await Promise.all([
+          db
+            .prepare(
+              `SELECT
+                count(*) as total,
+                sum(case when status = 'ok' then 1 else 0 end) as ok,
+                sum(case when status = 'error' then 1 else 0 end) as errors,
+                avg(duration_ms) as avg_duration_ms,
+                min(duration_ms) as min_duration_ms,
+                max(duration_ms) as max_duration_ms
+              FROM traces WHERE status != 'running'`
+            )
+            .first(),
+          db
+            .prepare(
+              `SELECT
+                count(*) as total,
+                avg(duration_ms) as avg_ms,
+                min(duration_ms) as min_ms,
+                max(duration_ms) as max_ms,
+                sum(case when status = 'error' then 1 else 0 end) as errors
+              FROM spans WHERE kind = 'inference' AND status != 'running'`
+            )
+            .first(),
+          db
+            .prepare(
+              `SELECT
+                json_extract(attributes, '$.toolName') as name,
+                count(*) as calls,
+                avg(duration_ms) as avg_ms,
+                sum(case when status = 'error' then 1 else 0 end) as errors
+              FROM spans WHERE kind = 'tool' AND status != 'running'
+              GROUP BY json_extract(attributes, '$.toolName')`
+            )
+            .all(),
+          db
+            .prepare(
+              `SELECT duration_ms, started_at
+              FROM spans WHERE kind = 'inference' AND status != 'running'
+              ORDER BY started_at DESC LIMIT 50`
+            )
+            .all(),
+          db
+            .prepare(
+              `SELECT json_extract(attributes, '$.toolName') as name, duration_ms, status, started_at
+              FROM spans WHERE kind = 'tool' AND status != 'running'
+              ORDER BY started_at DESC LIMIT 50`
+            )
+            .all(),
+        ]);
+
+      return json({
+        traces: traceStats,
+        inference: inferenceStats,
+        tools: toolStats?.results ?? [],
+        recentInference: recentInference?.results ?? [],
+        recentTools: recentTools?.results ?? [],
+      });
     }
 
     return json({ error: "Not found" }, 404);

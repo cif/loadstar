@@ -16,25 +16,89 @@ type Status = "idle" | "thinking" | "tool" | "error";
 interface ChatProps {
   onTraceId?: (traceId: string) => void;
   clientRef: React.MutableRefObject<LoadstarClient | undefined>;
+  conversationId?: string;
+  onConversationCreated?: (id: string) => void;
 }
 
-export function Chat({ onTraceId, clientRef }: ChatProps) {
+export function Chat({
+  onTraceId,
+  clientRef,
+  conversationId: initialConvId,
+  onConversationCreated,
+}: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [status, setStatus] = useState<Status>("idle");
   const [toolName, setToolName] = useState<string>();
-  const [conversationId, setConversationId] = useState<string>();
+  const [conversationId, setConversationId] = useState<string | undefined>(
+    initialConvId
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastSeqRef = useRef(0);
+  const pollRef = useRef<ReturnType<typeof setInterval>>();
 
   useEffect(() => {
     clientRef.current = new LoadstarClient({ baseUrl: API_URL });
   }, [clientRef]);
+
+  // Load existing conversation messages
+  useEffect(() => {
+    if (initialConvId && clientRef.current) {
+      setConversationId(initialConvId);
+      lastSeqRef.current = 0;
+      clientRef.current.getMessages(initialConvId).then((msgs) => {
+        setMessages(msgs);
+        if (msgs.length > 0) {
+          lastSeqRef.current = msgs[msgs.length - 1].seq;
+        }
+      });
+    }
+  }, [initialConvId, clientRef]);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, status]);
+
+  const fetchNewMessages = useCallback(
+    async (convId: string) => {
+      const client = clientRef.current;
+      if (!client) return false;
+      const msgs = await client.getMessages(convId, lastSeqRef.current);
+      if (msgs.length > 0) {
+        lastSeqRef.current = msgs[msgs.length - 1].seq;
+        setMessages((prev) => {
+          const withoutOptimistic = prev.filter(
+            (m) => !m.id.startsWith("optimistic-")
+          );
+          const existingIds = new Set(withoutOptimistic.map((m) => m.id));
+          const newMsgs = msgs.filter((m) => !existingIds.has(m.id));
+          return [...withoutOptimistic, ...newMsgs];
+        });
+        const hasAssistantResponse = msgs.some(
+          (m) => m.role === "assistant" && m.content && !m.toolCalls?.length
+        );
+        return hasAssistantResponse;
+      }
+      return false;
+    },
+    [clientRef]
+  );
+
+  useEffect(() => {
+    if ((status === "thinking" || status === "tool") && conversationId) {
+      pollRef.current = setInterval(async () => {
+        const done = await fetchNewMessages(conversationId);
+        if (done) {
+          setStatus("idle");
+          if (pollRef.current) clearInterval(pollRef.current);
+        }
+      }, 2000);
+      return () => {
+        if (pollRef.current) clearInterval(pollRef.current);
+      };
+    }
+  }, [status, conversationId, fetchNewMessages]);
 
   const handleEvent = useCallback(
     (event: AgentEvent) => {
@@ -55,24 +119,18 @@ export function Chat({ onTraceId, clientRef }: ChatProps) {
           setStatus("thinking");
           break;
         case "turn.complete":
-          setStatus("idle");
           if (conversationId) {
-            clientRef.current
-              ?.getMessages(conversationId, lastSeqRef.current)
-              .then((msgs) => {
-                if (msgs.length > 0) {
-                  lastSeqRef.current = msgs[msgs.length - 1].seq;
-                  setMessages((prev) => [...prev, ...msgs]);
-                }
-              });
+            fetchNewMessages(conversationId).then(() => {
+              setStatus("idle");
+              if (pollRef.current) clearInterval(pollRef.current);
+            });
           }
           break;
         case "error":
-          setStatus("error");
           break;
       }
     },
-    [conversationId, onTraceId, clientRef]
+    [conversationId, onTraceId, fetchNewMessages]
   );
 
   async function handleSend(content: string) {
@@ -84,17 +142,20 @@ export function Chat({ onTraceId, clientRef }: ChatProps) {
       const conv = await client.createConversation(AGENT_NAME);
       convId = conv.id;
       setConversationId(convId);
+      onConversationCreated?.(convId);
     }
 
-    const optimistic: Message = {
-      id: crypto.randomUUID(),
-      conversationId: convId,
-      role: "user",
-      content,
-      seq: lastSeqRef.current + 1,
-      createdAt: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, optimistic]);
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `optimistic-${Date.now()}`,
+        conversationId: convId,
+        role: "user" as const,
+        content,
+        seq: -1,
+        createdAt: new Date().toISOString(),
+      },
+    ]);
     setStatus("thinking");
 
     const result = await client.sendMessage(convId, content);
