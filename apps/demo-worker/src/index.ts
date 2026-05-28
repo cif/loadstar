@@ -24,10 +24,20 @@ When using tools, you MUST use the exact parameter names specified. For the sear
         if (!query) return { results: [{ title: "No query provided", snippet: "Pass a query parameter", url: "" }] };
 
         const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-        const res = await fetch(url, {
-          headers: { "User-Agent": "loadstar-agent/1.0" },
-        });
-        const html = await res.text();
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        let html: string;
+        try {
+          const res = await fetch(url, {
+            headers: { "User-Agent": "loadstar-agent/1.0" },
+            signal: controller.signal,
+          });
+          html = await res.text();
+        } catch {
+          return { results: [{ title: `Search timed out for: ${query}`, snippet: "DuckDuckGo did not respond in time.", url: "" }] };
+        } finally {
+          clearTimeout(timeout);
+        }
 
         const results: { title: string; snippet: string; url: string }[] = [];
         const linkRegex =

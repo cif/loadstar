@@ -60,21 +60,15 @@ export function Chat({
     async (convId: string) => {
       const client = clientRef.current;
       if (!client) return false;
-      const msgs = await client.getMessages(convId, lastSeqRef.current);
+      const msgs = await client.getMessages(convId);
       if (msgs.length > 0) {
         lastSeqRef.current = msgs[msgs.length - 1].seq;
-        setMessages((prev) => {
-          const withoutOptimistic = prev.filter(
-            (m) => !m.id.startsWith("optimistic-")
-          );
-          const existingIds = new Set(withoutOptimistic.map((m) => m.id));
-          const newMsgs = msgs.filter((m) => !existingIds.has(m.id));
-          return [...withoutOptimistic, ...newMsgs];
-        });
-        const hasAssistantResponse = msgs.some(
-          (m) => m.role === "assistant" && m.content && !m.toolCalls?.length
-        );
-        return hasAssistantResponse;
+        setMessages(msgs);
+        const lastMsg = msgs[msgs.length - 1];
+        const isDone =
+          (lastMsg.role === "assistant" && !lastMsg.toolCalls?.length) ||
+          lastMsg.content === "Max turns reached.";
+        return isDone;
       }
       return false;
     },
