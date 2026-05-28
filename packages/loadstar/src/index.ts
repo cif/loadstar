@@ -73,7 +73,7 @@ export function loadstar(config: LoadstarConfig) {
   return {
     AgentWorkflow,
 
-    fetch: async (request: Request, env: LoadstarBindings) => {
+    fetch: async (request: Request, env: LoadstarBindings): Promise<Response | null> => {
       if (request.method === "OPTIONS") {
         return new Response(null, {
           headers: {

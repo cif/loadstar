@@ -96,11 +96,18 @@ const app = loadstar({ agents: [researcher] });
 export const AgentWorkflow = app.AgentWorkflow;
 export { RelayDO };
 export default {
-  async fetch(request: Request, env: Parameters<typeof app.fetch>[1]) {
+  async fetch(request: Request, env: Parameters<typeof app.fetch>[1] & { ASSETS?: { fetch: typeof fetch } }) {
     if (new URL(request.url).pathname === "/_migrate") {
       await app.migrate(env);
       return new Response("Migrated");
     }
-    return app.fetch(request, env);
+    const response = await app.fetch(request, env);
+    if (response) return response;
+    if (env.ASSETS) {
+      const assetResponse = await env.ASSETS.fetch(request);
+      if (assetResponse.status !== 404) return assetResponse;
+      return env.ASSETS.fetch(new Request(new URL("/", request.url), request));
+    }
+    return new Response("Not found", { status: 404 });
   },
 };

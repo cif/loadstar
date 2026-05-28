@@ -16,7 +16,7 @@ export function createHandler(
   return async function handle(
     request: Request,
     env: LoadstarBindings
-  ): Promise<Response> {
+  ): Promise<Response | null> {
     const url = new URL(request.url);
     const method = request.method;
     const store = storeFactory(env);
@@ -209,7 +209,7 @@ export function createHandler(
       });
     }
 
-    return json({ error: "Not found" }, 404);
+    return null;
   };
 }
 
