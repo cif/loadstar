@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { LoadstarClient } from "@loadstar/client";
 import { Chat } from "./components/chat";
 import { TracePanel } from "./components/trace-panel";
 import { MetricsDashboard } from "./components/metrics-dashboard";
 import { ConversationList } from "./components/conversation-list";
-import { Activity, BarChart3, MessageSquare } from "lucide-react";
+import { Activity, ArrowLeft, BarChart3, Compass, MessageSquare } from "lucide-react";
 import { cn } from "./lib/utils";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "";
@@ -56,16 +57,20 @@ function App() {
       <div className="flex flex-col flex-1 min-w-0 border-r">
         <header className="flex items-center justify-between px-4 py-3 border-b shrink-0">
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-1 rounded-md hover:bg-muted transition-colors"
-            >
-              <MessageSquare className="h-4 w-4 text-muted-foreground" />
-            </button>
+            <Link to="/" className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors">
+              <ArrowLeft className="h-3.5 w-3.5" />
+              <Compass className="h-4 w-4" />
+            </Link>
             <span className="text-base font-semibold">loadstar</span>
             <span className="text-muted-foreground font-normal text-sm">
               demo
             </span>
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="p-1 rounded-md hover:bg-muted transition-colors ml-2"
+            >
+              <MessageSquare className="h-4 w-4 text-muted-foreground" />
+            </button>
           </div>
         </header>
         <Chat

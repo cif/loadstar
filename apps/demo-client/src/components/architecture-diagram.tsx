@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
+import { ArrowLeft, Compass } from "lucide-react";
 
 interface Node {
   id: string;
@@ -269,7 +271,16 @@ export function ArchitectureDiagram() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-8">
+    <div className="min-h-screen bg-background flex flex-col">
+      <nav className="flex items-center gap-4 px-6 py-3 border-b border-border shrink-0">
+        <Link to="/" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+          <ArrowLeft className="h-3.5 w-3.5" />
+          <Compass className="h-4 w-4" />
+          <span className="font-semibold text-foreground">loadstar</span>
+        </Link>
+        <span className="text-muted-foreground text-sm">/ architecture</span>
+      </nav>
+      <div className="flex-1 flex items-center justify-center p-8">
       <canvas
         ref={canvasRef}
         style={{ width: dims.w, height: dims.h }}
@@ -277,6 +288,7 @@ export function ArchitectureDiagram() {
         onMouseMove={handleMouseMove}
         onMouseLeave={() => setHoveredNode(null)}
       />
+      </div>
     </div>
   );
 }
