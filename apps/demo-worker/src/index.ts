@@ -23,44 +23,68 @@ When using tools, you MUST use the exact parameter names specified. For the sear
         }
         if (!query) return { results: [{ title: "No query provided", snippet: "Pass a query parameter", url: "" }] };
 
-        const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 5000);
-        let html: string;
+        const timeout = setTimeout(() => controller.abort(), 8000);
         try {
+          const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
           const res = await fetch(url, {
-            headers: { "User-Agent": "loadstar-agent/1.0" },
+            headers: {
+              "User-Agent": "Mozilla/5.0 (compatible; Loadstar/1.0; +https://github.com/cif/loadstar)",
+            },
             signal: controller.signal,
           });
-          html = await res.text();
+          const html = await res.text();
+
+          const results: { title: string; snippet: string; url: string }[] = [];
+          const linkRegex =
+            /<a[^>]+class="result__a"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g;
+          const snippetRegex =
+            /<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+          const links = [...html.matchAll(linkRegex)];
+          const snippets = [...html.matchAll(snippetRegex)];
+
+          for (let i = 0; i < Math.min(links.length, 5); i++) {
+            const rawUrl = links[i][1];
+            let decodedUrl = rawUrl;
+            const uddg = rawUrl.match(/uddg=([^&]+)/);
+            if (uddg) decodedUrl = decodeURIComponent(uddg[1]);
+            results.push({
+              title: links[i][2].replace(/<[^>]*>/g, "").trim(),
+              snippet: (snippets[i]?.[1] ?? "").replace(/<[^>]*>/g, "").trim(),
+              url: decodedUrl,
+            });
+          }
+
+          if (results.length > 0) return { results };
+
+          // Fallback: DDG instant answer API
+          const apiUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`;
+          const apiRes = await fetch(apiUrl, { signal: controller.signal });
+          const data = await apiRes.json() as Record<string, unknown>;
+          const fallbackResults: { title: string; snippet: string; url: string }[] = [];
+          if (data.AbstractText) {
+            fallbackResults.push({
+              title: data.Heading as string || query,
+              snippet: (data.AbstractText as string).slice(0, 300),
+              url: data.AbstractURL as string || "",
+            });
+          }
+          const topics = (data.RelatedTopics as { Text?: string; FirstURL?: string }[]) ?? [];
+          for (const topic of topics.slice(0, 4)) {
+            if (topic.Text) {
+              fallbackResults.push({
+                title: topic.Text.slice(0, 80),
+                snippet: topic.Text,
+                url: topic.FirstURL ?? "",
+              });
+            }
+          }
+          return { results: fallbackResults.length > 0 ? fallbackResults : [{ title: `No results for: ${query}`, snippet: "Try a different search query.", url: "" }] };
         } catch {
-          return { results: [{ title: `Search timed out for: ${query}`, snippet: "DuckDuckGo did not respond in time.", url: "" }] };
+          return { results: [{ title: `Search failed for: ${query}`, snippet: "Search timed out or was blocked.", url: "" }] };
         } finally {
           clearTimeout(timeout);
         }
-
-        const results: { title: string; snippet: string; url: string }[] = [];
-        const linkRegex =
-          /<a[^>]+class="result__a"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g;
-        const snippetRegex =
-          /<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
-        const links = [...html.matchAll(linkRegex)];
-        const snippets = [...html.matchAll(snippetRegex)];
-
-        for (let i = 0; i < Math.min(links.length, 5); i++) {
-          const rawUrl = links[i][1];
-          let decodedUrl = rawUrl;
-          const uddg = rawUrl.match(/uddg=([^&]+)/);
-          if (uddg) decodedUrl = decodeURIComponent(uddg[1]);
-
-          results.push({
-            title: links[i][2].replace(/<[^>]*>/g, "").trim(),
-            snippet: (snippets[i]?.[1] ?? "").replace(/<[^>]*>/g, "").trim(),
-            url: decodedUrl,
-          });
-        }
-
-        return { results: results.length > 0 ? results : [{ title: "No results", snippet: "", url: "" }] };
       },
     }),
     tool({

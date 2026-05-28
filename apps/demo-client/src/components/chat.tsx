@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LoadstarClient } from "@loadstar/client";
-import type { AgentEvent, Message } from "@loadstar/client";
+import type { LoadstarClient, AgentEvent, Message } from "@loadstar/client";
 import { CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ChatMessage } from "./chat-message";
@@ -8,7 +7,6 @@ import { ChatInput } from "./chat-input";
 import { StatusIndicator } from "./status-indicator";
 import { Compass } from "lucide-react";
 
-const API_URL = import.meta.env.VITE_API_URL ?? "";
 const AGENT_NAME = import.meta.env.VITE_AGENT_NAME || "researcher";
 
 type Status = "idle" | "thinking" | "tool" | "error";
@@ -29,23 +27,16 @@ export function Chat({
   const [messages, setMessages] = useState<Message[]>([]);
   const [status, setStatus] = useState<Status>("idle");
   const [toolName, setToolName] = useState<string>();
-  const [conversationId, setConversationId] = useState<string | undefined>(
-    initialConvId
-  );
   const scrollRef = useRef<HTMLDivElement>(null);
-  const lastSeqRef = useRef(0);
+  const convIdRef = useRef<string | undefined>(initialConvId);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
 
   // Load existing conversation messages
   useEffect(() => {
     if (initialConvId && clientRef.current) {
-      setConversationId(initialConvId);
-      lastSeqRef.current = 0;
+      convIdRef.current = initialConvId;
       clientRef.current.getMessages(initialConvId).then((msgs) => {
         setMessages(msgs);
-        if (msgs.length > 0) {
-          lastSeqRef.current = msgs[msgs.length - 1].seq;
-        }
       });
     }
   }, [initialConvId, clientRef]);
@@ -56,13 +47,13 @@ export function Chat({
     }
   }, [messages, status]);
 
-  const fetchNewMessages = useCallback(
-    async (convId: string) => {
-      const client = clientRef.current;
-      if (!client) return false;
+  const fetchAllMessages = useCallback(async (): Promise<boolean> => {
+    const client = clientRef.current;
+    const convId = convIdRef.current;
+    if (!client || !convId) return false;
+    try {
       const msgs = await client.getMessages(convId);
       if (msgs.length > 0) {
-        lastSeqRef.current = msgs[msgs.length - 1].seq;
         setMessages(msgs);
         const lastMsg = msgs[msgs.length - 1];
         const isDone =
@@ -70,15 +61,17 @@ export function Chat({
           lastMsg.content === "Max turns reached.";
         return isDone;
       }
-      return false;
-    },
-    [clientRef]
-  );
+    } catch {
+      // ignore fetch errors during polling
+    }
+    return false;
+  }, [clientRef]);
 
+  // Poll while thinking/tool
   useEffect(() => {
-    if ((status === "thinking" || status === "tool") && conversationId) {
+    if (status === "thinking" || status === "tool") {
       pollRef.current = setInterval(async () => {
-        const done = await fetchNewMessages(conversationId);
+        const done = await fetchAllMessages();
         if (done) {
           setStatus("idle");
           if (pollRef.current) clearInterval(pollRef.current);
@@ -88,7 +81,7 @@ export function Chat({
         if (pollRef.current) clearInterval(pollRef.current);
       };
     }
-  }, [status, conversationId, fetchNewMessages]);
+  }, [status, fetchAllMessages]);
 
   const handleEvent = useCallback(
     (event: AgentEvent) => {
@@ -96,7 +89,6 @@ export function Chat({
       if (data.traceId && onTraceId) {
         onTraceId(data.traceId as string);
       }
-
       switch (event.type) {
         case "turn.start":
           setStatus("thinking");
@@ -109,29 +101,25 @@ export function Chat({
           setStatus("thinking");
           break;
         case "turn.complete":
-          if (conversationId) {
-            fetchNewMessages(conversationId).then(() => {
-              setStatus("idle");
-              if (pollRef.current) clearInterval(pollRef.current);
-            });
-          }
-          break;
-        case "error":
+          fetchAllMessages().then(() => {
+            setStatus("idle");
+            if (pollRef.current) clearInterval(pollRef.current);
+          });
           break;
       }
     },
-    [conversationId, onTraceId, fetchNewMessages]
+    [onTraceId, fetchAllMessages]
   );
 
   async function handleSend(content: string) {
     const client = clientRef.current;
     if (!client) return;
 
-    let convId = conversationId;
+    let convId = convIdRef.current;
     if (!convId) {
       const conv = await client.createConversation(AGENT_NAME);
       convId = conv.id;
-      setConversationId(convId);
+      convIdRef.current = convId;
       onConversationCreated?.(convId);
     }
 
@@ -149,7 +137,6 @@ export function Chat({
     setStatus("thinking");
 
     const result = await client.sendMessage(convId, content);
-
     client.connectRelay(convId, result.relayId);
     client.on("*", handleEvent);
   }
@@ -159,7 +146,7 @@ export function Chat({
       <CardContent className="flex-1 p-0 overflow-hidden">
         <ScrollArea ref={scrollRef} className="h-full">
           <div className="py-4">
-            {messages.length === 0 ? (
+            {messages.length === 0 && status === "idle" ? (
               <div className="flex flex-col items-center justify-center h-[60vh] text-muted-foreground">
                 <Compass className="h-12 w-12 mb-4 opacity-20" />
                 <p className="text-sm">Send a message to begin</p>

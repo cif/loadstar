@@ -15,6 +15,7 @@ function App() {
   const [activeTraceId, setActiveTraceId] = useState<string>();
   const [rightTab, setRightTab] = useState<RightTab>("traces");
   const [conversationId, setConversationId] = useState<string>();
+  const [sidebarSelectedId, setSidebarSelectedId] = useState<string>();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [client, setClient] = useState<LoadstarClient | null>(null);
   const clientRef = useRef<LoadstarClient>();
@@ -26,11 +27,17 @@ function App() {
   }, []);
 
   const handleSelectConversation = useCallback((id: string) => {
+    setSidebarSelectedId(id);
     setConversationId(id);
   }, []);
 
   const handleNewConversation = useCallback(() => {
+    setSidebarSelectedId(undefined);
     setConversationId(undefined);
+  }, []);
+
+  const handleConversationCreated = useCallback((id: string) => {
+    setConversationId(id);
   }, []);
 
   return (
@@ -62,11 +69,11 @@ function App() {
           </div>
         </header>
         <Chat
-          key={conversationId ?? "new"}
+          key={sidebarSelectedId ?? "current"}
           onTraceId={setActiveTraceId}
           clientRef={clientRef}
           conversationId={conversationId}
-          onConversationCreated={setConversationId}
+          onConversationCreated={handleConversationCreated}
         />
       </div>
 
