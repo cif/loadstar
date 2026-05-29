@@ -53,7 +53,7 @@ const NODES: Node[] = [
     label: "Relay DO",
     sublabel: "WebSocket Proxy (no state)",
     x: 380,
-    y: 420,
+    y: 440,
     w: 180,
     h: 70,
     color: "#eab308",
@@ -123,7 +123,7 @@ const EDGES: Edge[] = [
   {
     from: "workflow",
     to: "relay",
-    label: "push events",
+    label: "events",
     color: "#eab308",
     dashed: true,
   },
@@ -142,7 +142,7 @@ const ANNOTATIONS = [
   },
   {
     x: 380,
-    y: 530,
+    y: 555,
     text: "No state, no logic — if evicted, client reconnects & catches up from API",
     color: "#eab308",
   },
@@ -169,13 +169,13 @@ export function ArchitectureDiagram() {
     let frame = 0;
     const isDark = document.documentElement.classList.contains("dark");
     const bg = isDark ? "#09090b" : "#ffffff";
-    const textMain = isDark ? "rgba(255,255,255,0.9)" : "rgba(0,0,0,0.85)";
-    const textMuted = isDark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.45)";
-    const textSubtle = isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.15)";
-    const borderSubtle = isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.08)";
+    const textMain = isDark ? "rgba(255,255,255,0.9)" : "rgba(0,0,0,0.9)";
+    const textMuted = isDark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.5)";
+    const textSubtle = isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.25)";
+    const borderSubtle = isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.12)";
     const nodeBg = isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)";
-    const edgeDefault = isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.15)";
-    const edgeArrow = isDark ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.3)";
+    const edgeDefault = isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.2)";
+    const edgeArrow = isDark ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.4)";
 
     function draw() {
       if (!ctx) return;
@@ -411,12 +411,13 @@ function drawEdge(
   ctx.fill();
 
   if (edge.label) {
-    const mx = (fx + tx) / 2;
-    const my = (fy + ty) / 2 - 8;
+    const t = 0.35;
+    const mx = (1 - t) * (1 - t) * fx + 2 * (1 - t) * t * cpx + t * t * tx;
+    const my = (1 - t) * (1 - t) * fy + 2 * (1 - t) * t * fy + t * t * ty;
     ctx.fillStyle = edge.color ?? theme.edgeArrow;
     ctx.font = "10px system-ui";
     ctx.textAlign = "center";
-    ctx.fillText(edge.label, mx, my);
+    ctx.fillText(edge.label, mx, my - 8);
     ctx.textAlign = "left";
   }
 }
