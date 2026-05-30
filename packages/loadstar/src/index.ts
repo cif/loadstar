@@ -8,11 +8,15 @@ import { createAgentWorkflow } from "./workflow.js";
 import { createHandler } from "./handler.js";
 import { D1ConversationStore } from "./adapters/d1.js";
 import { D1TraceStore } from "./adapters/d1-traces.js";
+import { D1LogStore } from "./adapters/d1-logs.js";
 
 export { agent, tool } from "./agent.js";
 export { RelayDO } from "./relay.js";
 export { D1ConversationStore } from "./adapters/d1.js";
 export { D1TraceStore } from "./adapters/d1-traces.js";
+export { D1LogStore, type WorkerLog } from "./adapters/d1-logs.js";
+export { WorkflowLogger } from "./logger.js";
+export type { LogEntry, LogLevel } from "./logger.js";
 export type {
   AgentDefinition,
   AgentEvent,
@@ -93,6 +97,8 @@ export function loadstar(config: LoadstarConfig) {
         await store.migrate();
         const traceStore = new D1TraceStore(env.DB);
         await traceStore.migrate();
+        const logStore = new D1LogStore(env.DB);
+        await logStore.migrate();
       }
     },
   };

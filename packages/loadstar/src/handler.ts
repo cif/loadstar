@@ -4,6 +4,7 @@ import type {
   LoadstarBindings,
   TraceStore,
 } from "./types.js";
+import { D1LogStore } from "./adapters/d1-logs.js";
 
 type StoreFactory = (env: LoadstarBindings) => ConversationStore;
 type TraceStoreFactory = (env: LoadstarBindings) => TraceStore;
@@ -207,6 +208,22 @@ export function createHandler(
         recentInference: recentInference?.results ?? [],
         recentTools: recentTools?.results ?? [],
       });
+    }
+
+    // GET /logs — query worker logs
+    if (url.pathname === "/logs" && method === "GET") {
+      if (!env.DB) return json({ error: "No DB" }, 501);
+      const logStore = new D1LogStore(env.DB);
+      const logs = await logStore.query({
+        traceId: url.searchParams.get("traceId") ?? undefined,
+        level: (url.searchParams.get("level") as "log" | "warn" | "error") ?? undefined,
+        source: url.searchParams.get("source") ?? undefined,
+        limit: url.searchParams.get("limit")
+          ? parseInt(url.searchParams.get("limit")!, 10)
+          : undefined,
+        since: url.searchParams.get("since") ?? undefined,
+      });
+      return json(logs);
     }
 
     return null;

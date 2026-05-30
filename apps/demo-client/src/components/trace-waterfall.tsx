@@ -175,6 +175,11 @@ function SpanRow({
           {span.status === "error" && (
             <AlertTriangle className="h-3 w-3 text-destructive shrink-0" />
           )}
+          {span.events.filter((e) => e.name.startsWith("console.")).length > 0 && (
+            <span className="text-[9px] px-1 py-0 rounded bg-muted text-muted-foreground shrink-0">
+              {span.events.filter((e) => e.name.startsWith("console.")).length} logs
+            </span>
+          )}
         </div>
 
         <div className="flex-1 h-5 relative">
@@ -249,24 +254,60 @@ function SpanDetail({ span }: { span: Span }) {
           </pre>
         </div>
       )}
-      {span.events.length > 0 && (
-        <div>
-          <span className="font-medium text-muted-foreground">Events</span>
-          <div className="mt-1 space-y-1">
-            {span.events.map((evt, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-2 text-[11px] text-muted-foreground"
-              >
-                <span className="font-mono">
-                  {new Date(evt.timestamp).toLocaleTimeString()}
-                </span>
-                <span>{evt.name}</span>
+      {span.events.length > 0 && (() => {
+        const consoleLogs = span.events.filter((e) => e.name.startsWith("console."));
+        const otherEvents = span.events.filter((e) => !e.name.startsWith("console."));
+
+        return (
+          <>
+            {consoleLogs.length > 0 && (
+              <div>
+                <span className="font-medium text-muted-foreground">Console</span>
+                <div className="mt-1 rounded bg-[#1e1e1e] dark:bg-[#0d0d0d] p-2 font-mono text-[11px] max-h-48 overflow-auto space-y-0.5">
+                  {consoleLogs.map((evt, i) => {
+                    const level = (evt.attributes?.level as string) ?? "log";
+                    const message = (evt.attributes?.message as string) ?? evt.name;
+                    return (
+                      <div key={i} className="flex gap-2">
+                        <span className="text-muted-foreground/60 shrink-0">
+                          {new Date(evt.timestamp).toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                        </span>
+                        <span className={cn(
+                          level === "error" && "text-red-400",
+                          level === "warn" && "text-yellow-400",
+                          level === "info" && "text-blue-400",
+                          level === "debug" && "text-gray-500",
+                          level === "log" && "text-gray-300",
+                        )}>
+                          {message}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+            )}
+            {otherEvents.length > 0 && (
+              <div>
+                <span className="font-medium text-muted-foreground">Events</span>
+                <div className="mt-1 space-y-1">
+                  {otherEvents.map((evt, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-2 text-[11px] text-muted-foreground"
+                    >
+                      <span className="font-mono">
+                        {new Date(evt.timestamp).toLocaleTimeString()}
+                      </span>
+                      <span>{evt.name}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        );
+      })()}
     </div>
   );
 }

@@ -14,6 +14,7 @@ import type {
   TraceStore,
   WorkflowPayload,
 } from "./types.js";
+import { WorkflowLogger } from "./logger.js";
 
 interface InferenceMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -496,6 +497,8 @@ export function createAgentWorkflow(
         return step.do(stepName, async () => opts.fn());
       }
 
+      const logger = new WorkflowLogger();
+
       return step.do(stepName, async () => {
         await traces.createSpan({
           spanId: opts.spanId,
@@ -511,6 +514,9 @@ export function createAgentWorkflow(
           error: null,
         });
 
+        logger.setContext(opts.traceId, opts.spanId);
+        logger.install();
+
         try {
           const result = await opts.fn();
           const extra = opts.onSuccess?.(result);
@@ -521,18 +527,22 @@ export function createAgentWorkflow(
               : JSON.stringify(result)?.slice(0, 2000));
 
           if (extra?.attributes) {
-            // Merge additional attributes discovered at runtime
             Object.assign(opts.attributes, extra.attributes);
           }
 
           await traces.endSpan(opts.spanId, "ok", output);
+          await logger.flush(traces);
           return result;
         } catch (err) {
           const errorMsg = err instanceof Error ? err.message : String(err);
           const errorStack =
             err instanceof Error ? err.stack ?? errorMsg : errorMsg;
           await traces.endSpan(opts.spanId, "error", null, errorStack);
+          await logger.flush(traces);
           throw err;
+        } finally {
+          logger.uninstall();
+          logger.clearContext();
         }
       });
     }

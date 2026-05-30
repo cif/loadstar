@@ -23,6 +23,7 @@ When using tools, you MUST use the exact parameter names specified. For the sear
         }
         if (!query) return { results: [{ title: "No query provided", snippet: "Pass a query parameter", url: "" }] };
 
+        console.log(`[search] querying: "${query}"`);
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 8000);
         try {
@@ -55,9 +56,12 @@ When using tools, you MUST use the exact parameter names specified. For the sear
             });
           }
 
-          if (results.length > 0) return { results };
+          if (results.length > 0) {
+            console.log(`[search] found ${results.length} results from HTML`);
+            return { results };
+          }
 
-          // Fallback: DDG instant answer API
+          console.warn(`[search] HTML scrape returned 0 results, trying API fallback`);
           const apiUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`;
           const apiRes = await fetch(apiUrl, { signal: controller.signal });
           const data = await apiRes.json() as Record<string, unknown>;
@@ -80,7 +84,8 @@ When using tools, you MUST use the exact parameter names specified. For the sear
             }
           }
           return { results: fallbackResults.length > 0 ? fallbackResults : [{ title: `No results for: ${query}`, snippet: "Try a different search query.", url: "" }] };
-        } catch {
+        } catch (e) {
+          console.error(`[search] failed:`, e);
           return { results: [{ title: `Search failed for: ${query}`, snippet: "Search timed out or was blocked.", url: "" }] };
         } finally {
           clearTimeout(timeout);
